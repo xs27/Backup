@@ -1,0 +1,271 @@
+#!/usr/bin/env ruby
+
+def appsetup
+
+  puts "Setting up Docker..."
+  if File.exists?("/etc/yum.repos.d/docker.repo")
+    puts "docker.repo already exists, skipping creation of docker.repo"
+  else
+    puts "Adding Docker repository..."
+    IO.write('docker.repo', '[dockerrepo]
+name=Docker Repository
+baseurl=https://yum.dockerproject.org/repo/main/centos/$releasever/
+enabled=1
+gpgcheck=1
+gpgkey=https://yum.dockerproject.org/gpg')
+    system 'mv ./docker.repo /etc/yum.repos.d/'
+  end
+  puts "Docker repo added"
+  puts "Installing Docker..."
+  system 'yum install docker-engine -y 2>> error.log'
+  puts "Starting up Docker..."
+  system 'sudo systemctl start docker 2>> error.log'
+  puts "Docker started."
+  system 'firewall-cmd --add-port=3306/tcp 2>> error.log'
+  system 'firewall-cmd --add-port=5432/tcp 2>> error.log'
+ 
+end
+
+def apprun
+  
+  require 'yaml'
+  cnf = YAML.load_file("config.yml")
+   
+  cnf.each do |k, v| 
+  name = k
+  detail = v
+  image = v['image']
+  cmd = v['command']  
+  
+  ports_raw = v['ports']
+  ports = ""
+  if (ports_raw.nil? or ports_raw.empty?)
+    ports = ""
+  else
+    ports_raw.each do |p|
+      ports += "-p #{p} "
+    end
+  end
+  
+  env_raw = v['environment']
+  envi = ""
+  if (env_raw.nil? or env_raw.empty?)
+    envi = ""
+  else
+    env_raw.each do |e|
+      envi += "-e #{e} "
+    end 
+  end 
+
+  vol_raw = v['volumes']
+  vol = ""
+  if (vol_raw.nil? or vol_raw.empty?)
+    vol = ""
+  else 
+    vol_raw.each do |vo|
+      vol += "-v #{vo} "
+    end
+  end
+
+  #cmd_raw = v['command']
+  #cmd = ""
+  #if (cmd_raw.nil? or cmd_raw.empty?)
+    #cmd = ""
+  #else
+    #cmd_raw.each do |c|
+      #cmd += "#{c} "
+    #end
+  #end
+  
+  wd_raw = v['workdir']
+  wd = ""
+  if (wd_raw.nil? or wd_raw.empty?)
+    wd = ""
+  else
+    wd_raw.each do |w|
+      wd += "-w #{w} "
+    end
+  end
+
+  mode_raw = v['mode']
+  mode = ""
+  if (mode_raw.nil? or mode_raw.empty?)
+    mode = ""
+  else
+    mode_raw.each do |md|
+      mode += "-#{md} "
+    end
+  end
+
+  link_raw = v['links']
+  link = ""
+  if (link_raw.nil? or link_raw.empty?)
+    link = ""
+  else
+    link_raw.each do |lk|
+      link += "--link #{lk} "
+    end
+  end
+
+
+  docker_cmd = "docker run --name #{name} #{mode} #{ports} #{envi} #{vol} #{wd} #{link} #{image} #{cmd}"
+  system docker_cmd
+  puts docker_cmd
+  end 
+
+end
+
+def applist
+
+  require 'yaml'
+  cnf = YAML.load_file("config.yml")
+  cnf.each do |k, v|
+    name = k
+  docker_cmd = "docker ps | grep " + name
+  system docker_cmd 
+  end 
+end
+
+def appattach(image)
+  require 'yaml'
+  cnf = YAML.load_file("config.yml")
+  iname = image
+  docker_cmd = ""
+  cnf.each do |k, v|
+    name = k
+    if iname.eql? name
+      docker_cmd = "docker exec -ti #{iname} /bin/bash "
+    end
+  end
+  system docker_cmd
+  if $?.exitstatus != 0
+  puts "This image cannot be attached, please choose a correct name or an image that supports interactive shell."
+  end
+end
+
+def appstop
+
+  require 'yaml'
+  cnf = YAML.load_file("config.yml")
+  
+  cnf.each do |k, v|
+    name = k
+    docker_cmd = "docker stop #{name} "
+    system docker_cmd 
+  end
+
+end
+
+def appclean
+
+  require 'yaml'
+  cnf = YAML.load_file("config.yml")
+
+  cnf.each do |k, v|
+    name = k
+    docker_cmd = "docker rm -f #{name} "
+    system docker_cmd
+  end
+
+end
+
+def appuninstall
+  
+  puts "Stopping all containers..."
+  appstop
+  puts "Stopping Docker..."
+  system 'sudo systemctl stop docker 2>> error.log'
+  puts "Uninstalling Docker..."
+  system 'yum remove docker-engine -y 2>> error.log'
+  puts "Uninstall complete."
+
+end
+
+
+def instructions
+
+  puts <<-EOF
+    Please provide command name
+
+    Usage:
+      qii setup
+        Installs docker on your machine
+      qii run
+        Runs images based on the configuration in config.yml
+      qii list
+        Lists all containers current related to this project
+      qii attach [imagename]
+        Attaches an a running container's interactive shell
+      qii stop
+        Stops all containers related to this project
+      qii clean
+        Removes all containers related to this project
+      qii uninstall
+        Uninstalls docker
+    EOF
+  
+end
+
+
+
+
+
+case ARGV[0]
+
+  when "setup"
+    
+    appsetup
+    puts $?
+    
+  when "run"
+  
+    apprun
+    puts "Process info"
+    puts $?
+    puts "Has the process exited?"
+    puts $?.exited?
+ 
+  when "attach"
+    iname = ARGV[1]
+    puts "Attaching #{iname}"   
+    appattach(iname)
+ 
+  when "list"
+   
+    applist
+    puts "Process info"
+    puts $?
+    puts "Has the process exited?"
+    puts $?.exited?
+
+
+  when "stop"
+
+    appstop
+    puts "Process info"
+    puts $?
+    puts "Has the process exited?"
+    puts $?.exited?
+
+ 
+  when "clean"
+  
+    appclean
+    puts "Process info"
+    puts $?
+    puts "Has the process exited?"
+    puts $?.exited?
+
+  when "uninstall"
+    
+    appuninstall
+    puts "Process info"
+    puts $?
+    puts "Has the process exited?"
+    puts $?.exited?
+
+  else
+  
+    instructions  
+
+end
