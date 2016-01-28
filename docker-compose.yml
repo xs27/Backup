@@ -1,0 +1,7 @@
+web:
+  build: .
+  ports:
+    - "80:80"
+  volumes:
+    - /root/phpmysql/phpMyAdmin.conf:/etc/httpd/conf.d/phpMyAdmin.conf
+    - /root/phpmysql/config.inc.php:/etc/phpMyAdmin/config.inc.php
